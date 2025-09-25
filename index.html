@@ -77,7 +77,69 @@
             );
         };
 
-        const StandingsTable = ({ standings }) => {
+        const TeamDetailsModal = ({ team, players, matches, onClose, getTeamName, getTeamLogo }) => {
+            if (!team) return null;
+
+            const teamPlayers = players.filter(p => p.teamId === team.id);
+            const upcomingMatches = matches
+                .filter(m => (m.homeTeamId === team.id || m.awayTeamId === team.id) && new Date(m.date) >= new Date())
+                .sort((a, b) => new Date(a.date) - new Date(b.date));
+
+            return (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-60 backdrop-blur-sm p-4" onClick={onClose}>
+                    <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-2xl max-w-3xl w-full text-left border-t-4 border-[#101097]" onClick={e => e.stopPropagation()}>
+                        <div className="flex flex-col sm:flex-row items-start sm:items-center mb-4">
+                            <img src={team.logoUrl} alt={`Logo de ${team.name}`} className="w-16 h-16 rounded-full mr-4 mb-4 sm:mb-0 shadow-md" />
+                            <h3 className="text-3xl font-bold">{team.name}</h3>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div>
+                                <h4 className="text-xl font-semibold mb-3 border-b pb-2">Jugadores</h4>
+                                {teamPlayers.length > 0 ? (
+                                    <ul className="space-y-2">
+                                        {teamPlayers.map(player => <li key={player.id} className="bg-gray-50 dark:bg-gray-700/50 p-2 rounded-md">{player.name}</li>)}
+                                    </ul>
+                                ) : (
+                                    <p className="text-sm text-gray-400 italic">No hay jugadores registrados.</p>
+                                )}
+                            </div>
+                            <div>
+                                <h4 className="text-xl font-semibold mb-3 border-b pb-2">Próximos Partidos</h4>
+                                {upcomingMatches.length > 0 ? (
+                                    <div className="space-y-3">
+                                        {upcomingMatches.map(match => (
+                                            <div key={match.id} className="bg-gray-50 dark:bg-gray-700/50 p-3 rounded-lg">
+                                                <p className="text-sm font-medium text-gray-600 dark:text-gray-300">{new Date(match.date).toLocaleDateString('es-ES', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
+                                                <div className="flex items-center justify-between mt-2 text-base">
+                                                    <div className="flex items-center font-bold">
+                                                        <img src={getTeamLogo(match.homeTeamId)} className="w-6 h-6 rounded-full mr-2" />
+                                                        {getTeamName(match.homeTeamId)}
+                                                    </div>
+                                                    <span className="font-extrabold text-[#101097] dark:text-blue-300 mx-2">vs</span>
+                                                    <div className="flex items-center font-bold">
+                                                        {getTeamName(match.awayTeamId)}
+                                                        <img src={getTeamLogo(match.awayTeamId)} className="w-6 h-6 rounded-full ml-2" />
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <p className="text-sm text-gray-400 italic">No hay partidos próximos.</p>
+                                )}
+                            </div>
+                        </div>
+
+                        <div className="text-right mt-8">
+                            <button onClick={onClose} className="btn-primary">Cerrar</button>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const StandingsTable = ({ standings, onTeamClick }) => {
             if (standings.length === 0) {
                 return <p className="text-center text-gray-500 dark:text-gray-400 py-4">No hay datos de clasificación para esta liga.</p>;
             }
@@ -98,7 +160,7 @@
                             {standings.map((team, index) => (
                                 <tr key={index} className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors duration-200">
                                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">
-                                        <div className="flex items-center">
+                                        <div className="flex items-center cursor-pointer" onClick={() => onTeamClick(team.id)}>
                                             <img src={team.logoUrl} alt={`Logo de ${team.teamName}`} className="w-6 h-6 rounded-full mr-3 shadow-sm" />
                                             {team.teamName}
                                         </div>
@@ -444,7 +506,7 @@
             );
         };
 
-        const LeagueCard = ({ league, teams, players, appId, db, showMessage, onMatchDayChange, onEditTeam, onAddPlayers }) => {
+        const LeagueCard = ({ league, teams, players, appId, db, showMessage, onMatchDayChange, onEditTeam, onAddPlayers, onAddNewTeam }) => {
             const [isExpanded, setIsExpanded] = useState(false);
             const dayOptions = [ { value: 1, label: 'Lunes' }, { value: 2, label: 'Martes' }, { value: 3, label: 'Miércoles' }, { value: 4, label: 'Jueves' }, { value: 5, label: 'Viernes' }, { value: 6, label: 'Sábado' }, { value: 0, label: 'Domingo' } ];
 
@@ -501,6 +563,12 @@
                                     </ul>
                                 </div>
                             ))}
+                            <div className="pt-4 mt-4 border-t border-gray-200 dark:border-gray-700 flex justify-center">
+                                <button onClick={() => onAddNewTeam(league.id)} className="btn-primary flex items-center text-sm py-2 px-4">
+                                    <PlusIcon className="w-4 h-4 mr-2" />
+                                    Añadir Nuevo Equipo
+                                </button>
+                            </div>
                         </div>
                     )}
                 </div>
@@ -534,9 +602,16 @@
             const [matchDetails, setMatchDetails] = useState(null);
             const [editingTeam, setEditingTeam] = useState(null);
             const [addingPlayersTeam, setAddingPlayersTeam] = useState(null);
+            const [selectedTeam, setSelectedTeam] = useState(null);
 
             const showMessage = (message) => { setModalMessage(message); setShowModal(true); };
             const handleMatchClick = (match) => { setMatchDetails(match); };
+            const handleTeamClick = (teamId) => {
+                const team = teams.find(t => t.id === teamId);
+                if (team) {
+                    setSelectedTeam(team);
+                }
+            };
 
             const getTeamName = useCallback((teamId) => teams.find(t => t.id === teamId)?.name || 'Equipo Desconocido', [teams]);
             const getTeamLogo = useCallback((teamId) => teams.find(t => t.id === teamId)?.logoUrl || '', [teams]);
@@ -669,6 +744,34 @@
                 }
             };
 
+            const handleAddNewTeam = async (leagueId) => {
+                if (!user || !appId) return;
+                const teamName = prompt("Introduce el nombre del nuevo equipo:");
+                if (!teamName || !teamName.trim()) return;
+
+                setIsLoading(true);
+                const { db } = window.firebaseApp;
+                const { doc, setDoc } = window.firebaseModules;
+                
+                const teamsInLeague = teams.filter(t => t.leagueId === leagueId).length;
+                const teamId = crypto.randomUUID();
+                const newTeam = {
+                    id: teamId,
+                    name: teamName.trim(),
+                    leagueId,
+                    logoUrl: `https://placehold.co/100x100/A0A0A0/FFF?text=${teamsInLeague + 1}`
+                };
+
+                try {
+                    await setDoc(doc(db, `artifacts/${appId}/public/data/teams`, teamId), newTeam);
+                    showMessage(`Equipo "${teamName.trim()}" añadido con éxito.`);
+                } catch (e) {
+                    console.error("Error adding new team:", e);
+                    showMessage("Error al añadir el equipo.");
+                }
+                setIsLoading(false);
+            };
+
             const handleDeleteTournament = async () => {
                 if (!selectedTournamentId) {
                     showMessage("Por favor, selecciona un torneo para eliminar.");
@@ -692,7 +795,7 @@
 
                             if (teamIds.length > 0) {
                                 const playersQuery = query(collection(db, `artifacts/${appId}/public/data/players`), where("teamId", "in", teamIds));
-                                const playersSnapshot = await getDocs(playersSnapshot);
+                                const playersSnapshot = await getDocs(playersQuery);
                                 await Promise.all(playersSnapshot.docs.map(d => deleteDoc(d.ref)));
                             }
                             await Promise.all(teamsSnapshot.docs.map(d => deleteDoc(d.ref)));
@@ -754,11 +857,11 @@
                         for (let i = 1; i <= teamsInLeague; i++) {
                             const teamName = `Equipo ${i}`;
                             const teamId = crypto.randomUUID();
-                            await setDoc(doc(db, `artifacts/${appId}/public/data/teams`, teamId), { 
-                                id: teamId, 
-                                name: teamName, 
-                                leagueId, 
-                                logoUrl: `https://placehold.co/100x100/A0A0A0/FFF?text=${i}` 
+                            await setDoc(doc(db, `artifacts/${appId}/public/data/teams`, teamId), {
+                                id: teamId,
+                                name: teamName,
+                                leagueId,
+                                logoUrl: `https://placehold.co/100x100/A0A0A0/FFF?text=${i}`
                             });
                         }
                     }
@@ -876,7 +979,7 @@
             const calculateStandings = useCallback((leagueId, visibleTeams, visibleMatches) => {
                 const leagueTeams = visibleTeams.filter(t => t.leagueId === leagueId);
                 const leagueMatches = visibleMatches.filter(m => m.leagueId === leagueId && m.scoreHome !== null);
-                const standingsMap = leagueTeams.reduce((acc, team) => ({ ...acc, [team.id]: { teamName: team.name, logoUrl: team.logoUrl, played: 0, wins: 0, draws: 0, losses: 0, points: 0, goalsFor: 0, goalsAgainst: 0, goalDifference: 0 } }), {});
+                const standingsMap = leagueTeams.reduce((acc, team) => ({ ...acc, [team.id]: { id: team.id, teamName: team.name, logoUrl: team.logoUrl, played: 0, wins: 0, draws: 0, losses: 0, points: 0, goalsFor: 0, goalsAgainst: 0, goalDifference: 0 } }), {});
 
                 leagueMatches.forEach(match => {
                     const home = standingsMap[match.homeTeamId], away = standingsMap[match.awayTeamId];
@@ -959,6 +1062,58 @@
                         console.error(`Error fetching or converting image from ${url}:`, e);
                         return null;
                     });
+            };
+
+            const generateTeamListPdf = async (visibleLeagues, visibleTeams, visiblePlayers) => {
+                const { jsPDF } = window.jspdf;
+                const doc = new jsPDF();
+                const schoolLogoUrl = 'https://i.imgur.com/dzDfAiQ.png';
+
+                const schoolLogoResult = await urlToB64(schoolLogoUrl);
+
+                for (const league of visibleLeagues.sort(sortLeagues)) {
+                    doc.addPage();
+                    let y = 20;
+
+                    if (schoolLogoResult) {
+                        doc.addImage(schoolLogoResult.dataUrl, schoolLogoResult.format.toUpperCase(), 15, 15, 20, 20);
+                    }
+
+                    doc.setFontSize(18).text(`Liga: ${league.name}`, doc.internal.pageSize.getWidth() / 2, y, { align: 'center' });
+                    y += 20;
+
+                    const teamsInLeague = visibleTeams.filter(t => t.leagueId === league.id);
+
+                    for (const team of teamsInLeague) {
+                        if (y > 250) { doc.addPage(); y = 20; }
+
+                        const teamLogoResult = await urlToB64(team.logoUrl);
+                        if (teamLogoResult) {
+                            doc.addImage(teamLogoResult.dataUrl, teamLogoResult.format.toUpperCase(), 15, y - 5, 10, 10);
+                        }
+                        doc.setFontSize(14).text(team.name, 30, y);
+                        y += 10;
+
+                        const teamPlayers = visiblePlayers.filter(p => p.teamId === team.id);
+                        if (teamPlayers.length > 0) {
+                            doc.autoTable({
+                                startY: y,
+                                head: [['Jugadores']],
+                                body: teamPlayers.map(p => [p.name]),
+                                theme: 'grid',
+                                headStyles: { fillColor: [22, 160, 133] },
+                            });
+                            y = doc.autoTable.previous.finalY + 10;
+                        } else {
+                            doc.setFontSize(10).text("No hay jugadores en este equipo.", 15, y);
+                            y += 10;
+                        }
+                    }
+                }
+
+                doc.deletePage(1); // Eliminar la primera página en blanco
+                doc.save(`lista_equipos_jugadores_${selectedTournamentId}.pdf`);
+                showMessage("PDF de Lista de Equipos y Jugadores generado.");
             };
 
             const generateUpcomingMatchesPdf = async (visibleMatches) => {
@@ -1201,7 +1356,7 @@
             const visiblePlayers = players.filter(p => visibleTeamIds.includes(p.teamId));
             const visibleMatches = matches.filter(m => visibleLeagueIds.includes(m.leagueId));
 
-            const AdminPanel = () => (
+            const AdminPanel = ({ onAddNewTeam }) => (
                 <div className="p-4 space-y-6">
                     <h2 className="text-3xl font-extrabold text-gray-900 dark:text-white mb-4">Panel de Administración</h2>
                     
@@ -1234,7 +1389,7 @@
                     </div>
                     <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg space-y-4 border-t-4 border-[#101097]">
                         <h3 className="text-2xl font-bold text-gray-900 dark:text-white">Gestión del Torneo Actual</h3>
-                        {visibleLeagues.length === 0 ? <p className="text-center text-gray-500 dark:text-gray-400 py-4">No hay ligas en este torneo.</p> : visibleLeagues.map(league => <LeagueCard key={league.id} league={league} teams={visibleTeams.filter(t => t.leagueId === league.id)} players={visiblePlayers} appId={appId} db={window.firebaseApp.db} showMessage={showMessage} onMatchDayChange={handleMatchDayChange} onEditTeam={handleEditTeam} onAddPlayers={handleOpenAddPlayersModal} />)}
+                        {visibleLeagues.length === 0 ? <p className="text-center text-gray-500 dark:text-gray-400 py-4">No hay ligas en este torneo.</p> : visibleLeagues.map(league => <LeagueCard key={league.id} league={league} teams={visibleTeams.filter(t => t.leagueId === league.id)} players={visiblePlayers} appId={appId} db={window.firebaseApp.db} showMessage={showMessage} onMatchDayChange={handleMatchDayChange} onEditTeam={handleEditTeam} onAddPlayers={handleOpenAddPlayersModal} onAddNewTeam={onAddNewTeam} />)}
                     </div>
                     <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg space-y-4 border-t-4 border-[#101097]">
                         <h3 className="text-2xl font-bold text-gray-900 dark:text-white">Generar Calendario</h3>
@@ -1278,6 +1433,10 @@
                                  <p className="text-gray-600 dark:text-gray-300 mb-2">Generar un reporte completo de clasificación y goleo.</p>
                                 <button onClick={() => generateStandingsAndTopScorersPdf(visibleLeagues, visibleTeams, visibleMatches, visiblePlayers)} className="btn-primary">PDF Clasificación y Goleo</button>
                             </div>
+                            <div className="border-t dark:border-gray-700 pt-4">
+                                 <p className="text-gray-600 dark:text-gray-300 mb-2">Generar una lista de equipos y jugadores.</p>
+                                <button onClick={() => generateTeamListPdf(visibleLeagues, visibleTeams, visiblePlayers)} className="btn-primary">PDF Lista de Equipos</button>
+                            </div>
                         </div>
                     </div>
                     <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg space-y-4 border-t-4 border-[#101097]">
@@ -1303,7 +1462,7 @@
                 </div>
             );
 
-            const StandingsView = () => (
+            const StandingsView = ({ onTeamClick }) => (
                 <div className="p-4 space-y-6">
                     <h2 className="text-3xl font-extrabold text-gray-900 dark:text-white mb-4">Clasificaciones y Anotadores</h2>
                     
@@ -1338,7 +1497,7 @@
                                 <div className="flex-1 space-y-6">
                                     <div>
                                         <h4 className="text-xl font-bold text-gray-800 dark:text-gray-200 mb-2">Clasificación</h4>
-                                        <StandingsTable standings={calculateStandings(league.id, visibleTeams, visibleMatches)} />
+                                        <StandingsTable standings={calculateStandings(league.id, visibleTeams, visibleMatches)} onTeamClick={onTeamClick} />
                                     </div>
                                     <div>
                                         <h4 className="text-xl font-bold text-gray-800 dark:text-gray-200 mb-2">Últimos Resultados</h4>
@@ -1365,8 +1524,8 @@
                     );
                 }
                 switch (view) {
-                    case 'standings': return <StandingsView />;
-                    case 'admin': return user ? <AdminPanel /> : (
+                    case 'standings': return <StandingsView onTeamClick={handleTeamClick} />;
+                    case 'admin': return user ? <AdminPanel onAddNewTeam={handleAddNewTeam} /> : (
                         <div className="flex items-center justify-center h-[50vh]">
                             <div className="bg-white dark:bg-gray-800 p-8 rounded-xl shadow-2xl w-full max-w-sm text-center border-t-4 border-[#101097]">
                                 <h3 className="text-2xl font-bold mb-4">Acceso de Administrador</h3>
@@ -1377,7 +1536,7 @@
                             </div>
                         </div>
                     );
-                    default: return <StandingsView />;
+                    default: return <StandingsView onTeamClick={handleTeamClick} />;
                 }
             };
 
@@ -1390,10 +1549,9 @@
                             </div>
                             <div className="flex items-center space-x-1">
                                 <button onClick={() => setView('standings')} className={`nav-button ${view === 'standings' ? 'bg-black/10' : ''}`}><TrophyIcon className="inline-block w-5 h-5 mr-2" />Clasificación</button>
-                                {user ? (
-                                    <button onClick={handleLogout} className="nav-button"><LockIcon className="inline-block w-5 h-5 mr-2" />Cerrar Sesión</button>
-                                ) : (
-                                    <button onClick={() => setView('admin')} className={`nav-button ${view === 'admin' ? 'bg-black/10' : ''}`}><LockIcon className="inline-block w-5 h-5 mr-2" />Admin</button>
+                                <button onClick={() => setView('admin')} className={`nav-button ${view === 'admin' ? 'bg-black/10' : ''}`}><LockIcon className="inline-block w-5 h-5 mr-2" />Admin</button>
+                                {user && (
+                                    <button onClick={handleLogout} className="nav-button">Cerrar Sesión</button>
                                 )}
                             </div>
                         </div>
@@ -1402,6 +1560,7 @@
                         {renderView()}
                     </main>
                     <MatchDetailsModal match={matchDetails} onClose={() => setMatchDetails(null)} getPlayerName={getPlayerName} getTeamName={getTeamName} />
+                    <TeamDetailsModal team={selectedTeam} players={players} matches={matches} onClose={() => setSelectedTeam(null)} getTeamName={getTeamName} getTeamLogo={getTeamLogo} />
                     <EditTeamModal team={editingTeam} onClose={handleCloseEditTeam} onSave={handleUpdateTeam} showMessage={showMessage} />
                     <AddPlayersModal team={addingPlayersTeam} onClose={() => setAddingPlayersTeam(null)} onAdd={handleAddMultiplePlayers} showMessage={showMessage} />
                     <Modal show={showModal} message={modalMessage} onClose={() => setShowModal(false)} />
