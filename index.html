@@ -98,7 +98,7 @@
                                 <h4 className="text-xl font-semibold mb-3 border-b pb-2">Jugadores</h4>
                                 {teamPlayers.length > 0 ? (
                                     <ul className="space-y-2">
-                                        {teamPlayers.map(player => <li key={player.id} className="bg-gray-50 dark:bg-gray-700/50 p-2 rounded-md">{player.name}</li>)}
+                                        {teamPlayers.map(player => <li key={player.id} className="bg-gray-50 dark:bg-gray-700/50 p-2 rounded-md">{player.name} {player.group && `(${player.group})`}</li>)}
                                     </ul>
                                 ) : (
                                     <p className="text-sm text-gray-400 italic">No hay jugadores registrados.</p>
@@ -343,13 +343,13 @@
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-60 backdrop-blur-sm">
                     <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-2xl max-w-md w-full text-left border-t-4 border-[#101097]">
                         <h3 className="text-xl font-bold mb-2">Añadir Jugadores a <span className="text-[#101097]">{team.name}</span></h3>
-                        <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">Escribe un nombre por línea. Puedes pegar una lista desde Excel o un editor de texto.</p>
+                        <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">Escribe un nombre por línea, seguido de una coma y el grupo (ej. Juan Pérez,1roA). Puedes pegar una lista.</p>
                         <textarea
                             value={playerNames}
                             onChange={(e) => setPlayerNames(e.target.value)}
                             rows="10"
                             className="w-full mt-1 p-2 rounded-lg border dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white"
-                            placeholder="Juan Pérez\nMaria García\n..."
+                            placeholder="Juan Pérez,1roA\nMaria García,2doB\n..."
                         />
                         <div className="flex justify-end space-x-2 mt-6">
                             <button onClick={onClose} className="py-2 px-5 bg-gray-200 dark:bg-gray-600 text-gray-800 dark:text-white font-semibold rounded-lg shadow-md hover:bg-gray-300 dark:hover:bg-gray-500 transition-all">Cancelar</button>
@@ -553,7 +553,7 @@
                                         {players.filter(p => p.teamId === team.id).length > 0 ? (
                                             players.filter(p => p.teamId === team.id).map(player => (
                                                 <li key={player.id} className="flex items-center justify-between">
-                                                    <span>{player.name}</span>
+                                                    <span>{player.name} {player.group && `(${player.group})`}</span>
                                                     <button onClick={() => handleDeletePlayer(player.id)} className="text-red-500 hover:text-red-700 p-1 rounded-full hover:bg-red-100 dark:hover:bg-red-900/50 transition-colors"><TrashIcon className="w-4 h-4" /></button>
                                                 </li>
                                             ))
@@ -642,7 +642,7 @@
             }, []);
 
             useEffect(() => {
-                if (!isAuthReady || !appId) return;
+                if (!isAuthReady || !appId) return; 
                 
                 const publicDataPath = `artifacts/${appId}/public/data`;
 
@@ -724,19 +724,22 @@
                 setAddingPlayersTeam(team);
             };
 
-            const handleAddMultiplePlayers = async (teamId, names) => {
+            const handleAddMultiplePlayers = async (teamId, playerLines) => {
                 if (!user || !appId) return;
                 const { db } = window.firebaseApp;
                 const { doc, setDoc } = window.firebaseModules;
                 
-                const playerPromises = names.map(name => {
+                const playerPromises = playerLines.map(line => {
+                    const parts = line.split(',');
+                    const name = parts[0].trim();
+                    const group = parts.length > 1 ? parts[1].trim() : null;
                     const playerId = crypto.randomUUID();
-                    return setDoc(doc(db, `artifacts/${appId}/public/data/players`, playerId), { id: playerId, name, teamId });
+                    return setDoc(doc(db, `artifacts/${appId}/public/data/players`, playerId), { id: playerId, name, group, teamId });
                 });
 
                 try {
                     await Promise.all(playerPromises);
-                    showMessage(`${names.length} jugador(es) añadido(s) con éxito.`);
+                    showMessage(`${playerLines.length} jugador(es) añadido(s) con éxito.`);
                     setAddingPlayersTeam(null); // Close modal on success
                 } catch (e) {
                     console.error("Error adding multiple players:", e);
@@ -1072,41 +1075,59 @@
                 const schoolLogoResult = await urlToB64(schoolLogoUrl);
 
                 for (const league of visibleLeagues.sort(sortLeagues)) {
-                    doc.addPage();
-                    let y = 20;
-
-                    if (schoolLogoResult) {
-                        doc.addImage(schoolLogoResult.dataUrl, schoolLogoResult.format.toUpperCase(), 15, 15, 20, 20);
+                    const teamsInLeague = visibleTeams.filter(t => t.leagueId === league.id);
+                    const teamsChunks = [];
+                    for (let i = 0; i < teamsInLeague.length; i += 6) {
+                        teamsChunks.push(teamsInLeague.slice(i, i + 6));
                     }
 
-                    doc.setFontSize(18).text(`Liga: ${league.name}`, doc.internal.pageSize.getWidth() / 2, y, { align: 'center' });
-                    y += 20;
+                    for (const [index, chunk] of teamsChunks.entries()) {
+                        doc.addPage();
+                        let y = 20;
 
-                    const teamsInLeague = visibleTeams.filter(t => t.leagueId === league.id);
-
-                    for (const team of teamsInLeague) {
-                        if (y > 250) { doc.addPage(); y = 20; }
-
-                        const teamLogoResult = await urlToB64(team.logoUrl);
-                        if (teamLogoResult) {
-                            doc.addImage(teamLogoResult.dataUrl, teamLogoResult.format.toUpperCase(), 15, y - 5, 10, 10);
+                        if (schoolLogoResult) {
+                            doc.addImage(schoolLogoResult.dataUrl, schoolLogoResult.format.toUpperCase(), 15, 15, 20, 20);
                         }
-                        doc.setFontSize(14).text(team.name, 30, y);
-                        y += 10;
 
-                        const teamPlayers = visiblePlayers.filter(p => p.teamId === team.id);
-                        if (teamPlayers.length > 0) {
-                            doc.autoTable({
-                                startY: y,
-                                head: [['Jugadores']],
-                                body: teamPlayers.map(p => [p.name]),
-                                theme: 'grid',
-                                headStyles: { fillColor: [22, 160, 133] },
-                            });
-                            y = doc.autoTable.previous.finalY + 10;
-                        } else {
-                            doc.setFontSize(10).text("No hay jugadores en este equipo.", 15, y);
+                        let leagueTitle = `Liga: ${league.name}`;
+                        if (teamsChunks.length > 1) {
+                            leagueTitle += ` (Página ${index + 1} de ${teamsChunks.length})`;
+                        }
+                        doc.setFontSize(18).text(leagueTitle, doc.internal.pageSize.getWidth() / 2, y, { align: 'center' });
+                        y += 20;
+
+                        for (const team of chunk) {
+                            if (y > 250) { 
+                                doc.addPage(); 
+                                y = 20;
+                                if (schoolLogoResult) {
+                                    doc.addImage(schoolLogoResult.dataUrl, schoolLogoResult.format.toUpperCase(), 15, 15, 20, 20);
+                                }
+                                doc.setFontSize(18).text(leagueTitle, doc.internal.pageSize.getWidth() / 2, y, { align: 'center' });
+                                y += 20;
+                            }
+
+                            const teamLogoResult = await urlToB64(team.logoUrl);
+                            if (teamLogoResult) {
+                                doc.addImage(teamLogoResult.dataUrl, teamLogoResult.format.toUpperCase(), 15, y - 5, 10, 10);
+                            }
+                            doc.setFontSize(14).text(team.name, 30, y);
                             y += 10;
+
+                            const teamPlayers = visiblePlayers.filter(p => p.teamId === team.id);
+                            if (teamPlayers.length > 0) {
+                                doc.autoTable({
+                                    startY: y,
+                                    head: [['Jugador', 'Grupo']],
+                                    body: teamPlayers.map(p => [p.name, p.group || '']),
+                                    theme: 'grid',
+                                    headStyles: { fillColor: [22, 160, 133] },
+                                });
+                                y = doc.autoTable.previous.finalY + 10;
+                            } else {
+                                doc.setFontSize(10).text("No hay jugadores en este equipo.", 15, y);
+                                y += 10;
+                            }
                         }
                     }
                 }
